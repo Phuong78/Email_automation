@@ -15,18 +15,18 @@ pipeline {
         ANSIBLE_PLAYBOOKS_DIR_NAME           = 'ansible_playbooks'
 
         // === THAY THẾ CÁC GIÁ TRỊ NÀY BẰNG OUTPUT TỪ TERRAFORM_AWS_INFRA SAU KHI CHẠY LẦN ĐẦU ===
-        NAGIOS_SERVER_PRIVATE_IP             = 'YOUR_NAGIOS_PRIVATE_IP_FROM_TF_MAIN_OUTPUT'
-        NFS_SERVER_PRIVATE_IP_AWS            = 'YOUR_NFS_SERVER_PRIVATE_IP_FROM_TF_MAIN_OUTPUT'
+        NAGIOS_SERVER_PRIVATE_IP             = "10.10.1.231"
+        NFS_SERVER_PRIVATE_IP_AWS            = "10.10.101.10" 
         NFS_EXPORT_PATH_AWS                  = '/srv/nfs_share' // Đường dẫn export trên NFS Server AWS
-        CUSTOMER_VM_SUBNET_ID                = 'YOUR_PUBLIC_SUBNET_ID_FOR_CUSTOMER_VM_FROM_TF_MAIN_OUTPUT' // Ví dụ: một trong các public_subnet_ids
-        VPC_ID_FOR_CUSTOMER_SG               = 'YOUR_VPC_ID_FROM_TF_MAIN_OUTPUT'
-        CUSTOMER_MAIL_SERVER_INSTANCE_PROFILE_NAME = 'YOUR_CUSTOMER_MAIL_INSTANCE_PROFILE_NAME_FROM_TF_MAIN_OUTPUT'
+        CUSTOMER_VM_SUBNET_ID                = "subnet-0606eeccb7dbc5b94" // Ví dụ: một trong các public_subnet_ids
+        VPC_ID_FOR_CUSTOMER_SG               = "vpc-05289181f27f39c5c"
+        CUSTOMER_MAIL_SERVER_INSTANCE_PROFILE_NAME = "EmailInfraProd-CustomerMail-Profile"
         // =======================================================================================
 
         // === Cấu hình mặc định cho máy chủ mail của khách hàng (có thể ghi đè bằng parameters nếu muốn) ===
         CUSTOMER_VM_AMI_ID                   = 'ami-053b0d53c279acc90'        // THAY THẾ: AMI Ubuntu 22.04 LTS mới nhất cho vùng AWS_REGION
         CUSTOMER_VM_INSTANCE_TYPE            = 't3.micro'
-        CUSTOMER_VM_KEY_PAIR_NAME            = 'YOUR_GLOBAL_AWS_KEY_PAIR_NAME' // THAY THẾ: Key Pair dùng cho VM khách hàng
+        CUSTOMER_VM_KEY_PAIR_NAME            = 'nguyenp-key-pair' // THAY THẾ: Key Pair dùng cho VM khách hàng
 
         // === SSH Credentials ID (đã tạo trong Jenkins UI) ===
         SSH_CREDENTIALS_ID                   = 'customer-vm-ssh-key' // ID của credential SSH trong Jenkins
