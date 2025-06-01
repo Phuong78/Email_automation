@@ -1,0 +1,124 @@
+# ansible_playbooks/setup_mail_server.yml
+- name: Configure Customer Email Server
+  hosts: mail_server_customer # Tên group trong inventory file mà Jenkins tạo
+  become: yes # Chạy các tác vụ với quyền sudo
+  vars:
+    # Các biến này sẽ được truyền từ Jenkinsfile qua tùy chọn -e "key=value"
+    # customer_domain: "example.com"
+    # customer_email_user: "admin"
+    # customer_email_password: "password"
+    # nfs_server_private_ip_aws: "10.10.x.x" (IP private của NFS server trên AWS)
+    # nfs_export_path_aws: "/srv/nfs_share" (Đường dẫn export trên NFS server AWS)
+    # nagios_server_private_ip: "10.10.y.y" (IP private của Nagios server trên AWS)
+    mail_data_mount_point: "/mnt/mail_data_share" # Thư mục mount dữ liệu mail
+
+  tasks:
+    - name: Ensure apt cache is updated and essential packages are installed
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600 # Giữ cache trong 1 giờ
+        name:
+          - postfix
+          - dovecot-core
+          - dovecot-imapd
+          - dovecot-pop3d
+          - mailutils
+          - nfs-common # Đảm bảo có, dù user_data đã cài
+          - nagios-nrpe-server
+          - nagios-plugins
+        state: present
+
+    # ----- Configure NFS Mount for Mail Data -----
+    - name: Ensure mount point for mail data exists (đã tạo trong user_data, đảm bảo lại)
+      file:
+        path: "{{ mail_data_mount_point }}"
+        state: directory
+        mode: '0777' # Quyền này sẽ được điều chỉnh bởi Postfix/Dovecot sau này
+
+    - name: Mount NFS share from AWS NFS Server (and add to /etc/fstab)
+      ansible.posix.mount:
+        path: "{{ mail_data_mount_point }}"
+        src: "{{ nfs_server_private_ip_aws }}:{{ nfs_export_path_aws }}"
+        fstype: nfs
+        opts: "rw,sync,hard,intr,rsize=8192,wsize=8192,timeo=14,nfsvers=4.1,bg" # Thêm 'bg' để mount ở background nếu server chưa sẵn sàng ngay
+        state: mounted # Đảm bảo mount và thêm vào fstab
+
+    # ----- Configure Postfix (Cấu hình cơ bản - Cần mở rộng nhiều) -----
+    - name: Configure Postfix system mailname and main mailer type via debconf
+      debconf:
+        name: postfix
+        question: "{{ item.question }}"
+        value: "{{ item.value }}"
+        vtype: string
+      loop:
+        - { question: 'postfix/mailname', value: "{{ customer_domain }}" }
+        - { question: 'postfix/main_mailer_type', value: "'Internet Site'" }
+      notify: Restart postfix
+
+    - name: Update Postfix main.cf configurations
+      lineinfile:
+        path: /etc/postfix/main.cf
+        regexp: "^{{ item.key }}\\s*=" # Đảm bảo regexp chỉ khớp đầu dòng
+        line: "{{ item.key }} = {{ item.value }}"
+        state: present
+        create: yes # Tạo dòng nếu chưa có (hữu ích cho các setting mới)
+      loop:
+        - { key: 'myhostname', value: "mail.{{ customer_domain }}" } # FQDN của mail server
+        - { key: 'mydomain', value: "{{ customer_domain }}" }
+        - { key: 'myorigin', value: "$mydomain" }
+        - { key: 'mydestination', value: "$myhostname, {{ customer_domain }}, localhost.{{ customer_domain }}, localhost" }
+        - { key: 'mynetworks', value: "127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128" } # Chỉ cho localhost gửi không cần auth
+        - { key: 'home_mailbox', value: "Maildir/" } # Mail sẽ được lưu trong home_directory/Maildir/
+        # Thêm cấu hình SSL/TLS, SASL, relay, virtual domains, etc.
+      notify: Restart postfix
+
+    # ----- Configure Dovecot (Cấu hình cơ bản - Cần mở rộng nhiều) -----
+    - name: Configure Dovecot mail_location to use NFS mount
+      lineinfile:
+        path: /etc/dovecot/conf.d/10-mail.conf
+        regexp: '^mail_location\\s*='
+        line: "mail_location = maildir:{{ mail_data_mount_point }}/%u/Maildir" # %u là username
+      notify: Restart dovecot
+      # Thêm cấu hình SSL/TLS, listeners IMAPS/POP3S, authentication, userdb/passdb...
+
+    # ----- Create Email User -----
+    - name: Create system user for email with home on NFS share
+      user:
+        name: "{{ customer_email_user }}"
+        password: "{{ customer_email_password | password_hash('sha512') }}" # Mã hóa mật khẩu
+        shell: /usr/sbin/nologin # Không cho phép login SSH
+        home: "{{ mail_data_mount_point }}/{{ customer_email_user }}" # Thư mục nhà của user trên NFS
+        state: present
+        create_home: yes
+        system: yes # Hoặc user thường nếu muốn
+        group: mail # Đảm bảo group 'mail' tồn tại và có quyền ghi vào NFS share cho mail
+
+    # ----- Configure Nagios NRPE Client -----
+    - name: Configure NRPE allowed_hosts to accept connections from Nagios Server
+      lineinfile:
+        path: /etc/nagios/nrpe.cfg
+        regexp: '^allowed_hosts='
+        line: "allowed_hosts=127.0.0.1,::1,{{ nagios_server_private_ip }}"
+      notify: Restart nrpe
+
+    - name: Enable basic NRPE commands (uncomment and define)
+      lineinfile:
+        path: /etc/nagios/nrpe.cfg
+        regexp: "{{ item.regexp }}" # Regexp để tìm dòng command (kể cả khi đã bỏ comment)
+        line: "{{ item.line }}"
+        backrefs: yes # Sử dụng lại phần đã khớp nếu có
+      loop:
+        - { regexp: '^(#\s*)?command\[check_users\]=.*', line: 'command[check_users]=/usr/lib/nagios/plugins/check_users -w 5 -c 10' }
+        - { regexp: '^(#\s*)?command\[check_load\]=.*', line: 'command[check_load]=/usr/lib/nagios/plugins/check_load -r -w .15,.10,.05 -c .30,.25,.20' }
+        - { regexp: '^(#\s*)?command\[check_root_disk\]=.*', line: 'command[check_root_disk]=/usr/lib/nagios/plugins/check_disk -w 20% -c 10% -p /' }
+        - { regexp: '^(#\s*)?command\[check_mail_data_disk\]=.*', line: 'command[check_mail_data_disk]=/usr/lib/nagios/plugins/check_disk -w 20% -c 10% -p {{ mail_data_mount_point }}' }
+        - { regexp: '^(#\s*)?command\[check_total_procs\]=.*', line: 'command[check_total_procs]=/usr/lib/nagios/plugins/check_procs -w 150 -c 200' }
+      notify: Restart nrpe
+
+  handlers:
+    - name: Restart postfix
+      service: name=postfix state=restarted
+    - name: Restart dovecot
+      service: name=dovecot state=restarted
+    - name: Restart nrpe
+      service: name=nagios-nrpe-server state=restarted
