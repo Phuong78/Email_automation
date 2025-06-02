@@ -3,32 +3,27 @@ pipeline {
     agent any // Jenkins local, image tùy chỉnh đã có Terraform, Ansible, AWS CLI
 
     environment {
-        // === ID CỦA AWS CREDENTIALS ĐÃ TẠO TRONG JENKINS ===
-        AWS_CREDENTIALS_ID                   = 'my-aws-account-creds' // QUAN TRỌNG: Phải khớp với ID credential trong Jenkins
+        AWS_CREDENTIALS_ID                   = 'my-aws-account-creds' 
+        AWS_DEFAULT_REGION                   = 'us-east-1'
+        AWS_REGION                           = 'us-east-1'
+        PROJECT_NAME_TAG                     = 'CustomerEmailVM' 
+        TERRAFORM_CUSTOMER_TEMPLATE_DIR_NAME = 'terraform_customer_mail_vm'
+        ANSIBLE_PLAYBOOKS_DIR_NAME           = 'ansible_playbooks'
 
-        // === Các thông tin chung ===
-        AWS_DEFAULT_REGION                   = 'us-east-1' // Vùng AWS chính của bạn
-        AWS_REGION                           = 'us-east-1' // Dùng cho nhất quán
-        PROJECT_NAME_TAG                     = 'CustomerEmailVM' // Tag cho VM khách hàng
-        TERRAFORM_CUSTOMER_TEMPLATE_DIR_NAME = 'terraform_customer_mail_vm' // Tên thư mục template trong repo Git
-        ANSIBLE_PLAYBOOKS_DIR_NAME           = 'ansible_playbooks'            // Tên thư mục playbook trong repo Git
-
-        // === CÁC GIÁ TRỊ NÀY LẤY TỪ OUTPUT CỦA VIỆC CHẠY TERRAFORM_AWS_INFRA ===
+        // === GIÁ TRỊ TỪ OUTPUT CỦA TERRAFORM_AWS_INFRA (BẠN ĐÃ CUNG CẤP) ===
         NAGIOS_SERVER_PRIVATE_IP             = "10.10.1.236"
-        NFS_SERVER_PRIVATE_IP_AWS            = "10.10.101.68"
-        NFS_EXPORT_PATH_AWS                  = "/srv/nfs_share"
-        CUSTOMER_VM_SUBNET_ID                = "subnet-0606eeccb7dbc5b94" // Public Subnet đầu tiên từ output của bạn
+        NFS_SERVER_PRIVATE_IP_AWS            = "10.10.101.68"    // IP Private của NFS Server trên EC2
+        NFS_EXPORT_PATH_AWS                  = "/srv/nfs_share"  // Đường dẫn export trên NFS Server EC2
+        CUSTOMER_VM_SUBNET_ID                = "subnet-0606eeccb7dbc5b94" 
         VPC_ID_FOR_CUSTOMER_SG               = "vpc-05289181f27f39c5c"
         CUSTOMER_MAIL_SERVER_INSTANCE_PROFILE_NAME = "EmailInfraProd-CustomerMail-Profile"
         // =======================================================================
 
-        // === Cấu hình cho máy chủ mail của khách hàng ===
-        // QUAN TRỌNG: Xác nhận lại các giá trị này!
-        CUSTOMER_VM_AMI_ID                   = 'ami-084568db4383264d4' // << AMI Ubuntu 22.04 LTS (amd64) MỚI NHẤT cho vùng AWS_REGION (bạn đã cung cấp)
+        // === Cấu hình cho máy chủ mail của khách hàng (BẠN ĐÃ CUNG CẤP) ===
+        CUSTOMER_VM_AMI_ID                   = 'ami-084568db4383264d4' 
         CUSTOMER_VM_INSTANCE_TYPE            = 't3.micro'
-        CUSTOMER_VM_KEY_PAIR_NAME            = 'nguyenp-key-pair'      // << Tên Key Pair trên AWS cho VM khách hàng (bạn đã cung cấp)
+        CUSTOMER_VM_KEY_PAIR_NAME            = 'nguyenp-key-pair'
 
-        // === ID CỦA SSH CREDENTIALS ĐÃ TẠO TRONG JENKINS ===
         SSH_CREDENTIALS_ID                   = 'customer-vm-ssh-key'
     }
 
@@ -72,6 +67,7 @@ pipeline {
                     customer_mail_server_instance_profile_name = "${env.CUSTOMER_MAIL_SERVER_INSTANCE_PROFILE_NAME}"
                     nagios_server_private_ip                 = "${env.NAGIOS_SERVER_PRIVATE_IP}"
                     """
+                    // Biến efs_file_system_id đã được loại bỏ khỏi đây
                     echo "Đã chuẩn bị workspace và file terraform.tfvars cho khách hàng ${params.CUSTOMER_NAME} tại ${customerTerraformWorkspace}"
                 }
             }
@@ -85,7 +81,7 @@ pipeline {
                         dir(customerTerraformWorkspace) {
                             sh "echo '--- Checking Terraform version ---'"
                             sh "terraform --version"
-                            sh "echo '--- Checking AWS identity (should show your IAM user) ---'"
+                            sh "echo '--- Checking AWS identity ---'"
                             sh "aws sts get-caller-identity"
                             
                             sh "echo '--- Running terraform init ---'"
@@ -105,6 +101,7 @@ pipeline {
                                     def jsonOutput = readJSON text: terraformOutput 
                                     env.CUSTOMER_VM_PUBLIC_IP = jsonOutput.customer_vm_public_ip.value
                                     env.CUSTOMER_VM_PRIVATE_IP = jsonOutput.customer_vm_private_ip.value
+                                    // Không cần lấy EFS DNS Name nữa
                                     echo "Máy chủ ${params.CUSTOMER_NAME} - IP Public: ${env.CUSTOMER_VM_PUBLIC_IP}, IP Private: ${env.CUSTOMER_VM_PRIVATE_IP}"
                                 } catch (e) {
                                     echo "Lỗi khi đọc Terraform output: ${e.getMessage()}"
@@ -129,8 +126,7 @@ pipeline {
                 withCredentials([sshUserPrivateKey(credentialsId: env.SSH_CREDENTIALS_ID, keyFileVariable: 'ANSIBLE_SSH_KEY_FILE_PATH')]) {
                     script {
                         echo "Bắt đầu cấu hình Ansible cho ${params.CUSTOMER_NAME} (IP: ${env.CUSTOMER_VM_PUBLIC_IP})"
-                        echo "Sử dụng key file từ Jenkins credentials được lưu tại: ${ANSIBLE_SSH_KEY_FILE_PATH}"
-                        
+                        echo "Sử dụng key file từ Jenkins credentials: ${ANSIBLE_SSH_KEY_FILE_PATH}"
                         sleep(60) 
 
                         def inventoryContent = """
@@ -139,13 +135,11 @@ pipeline {
                         """
                         def ansibleInventoryFile = "${env.WORKSPACE}/inventory_${params.CUSTOMER_NAME.toLowerCase().replaceAll('[^a-z0-9]+', '')}.ini"
                         writeFile file: ansibleInventoryFile, text: inventoryContent
-                        echo "Đã tạo file inventory tạm thời cho Ansible: ${ansibleInventoryFile}"
+                        echo "Đã tạo file inventory tạm thời: ${ansibleInventoryFile}"
 
                         dir(env.ANSIBLE_PLAYBOOKS_PATH_ABS) {
                            sh """
-                           echo '--- Checking Ansible version ---'
                            ansible --version
-                           echo '--- Running Ansible playbook ---'
                            ansible-playbook -i "${ansibleInventoryFile}" setup_mail_server.yml \\
                                -e "customer_domain=${params.CUSTOMER_DOMAIN}" \\
                                -e "customer_email_user=${params.CUSTOMER_EMAIL_USER}" \\
@@ -157,25 +151,19 @@ pipeline {
                                -e "target_host_public_ip=${env.CUSTOMER_VM_PUBLIC_IP}" \\
                                -e "aws_region=${env.AWS_REGION}"
                            """
+                           // Biến efs_dns_name đã được loại bỏ khỏi đây
                         }
                         echo "Đã cấu hình máy chủ cho ${params.CUSTOMER_NAME} bằng Ansible."
                     } 
                 } 
             } 
         } 
-
         // stage('5. Cập nhật Nagios Server') { ... }
         // stage('6. Thông báo Kết quả cho n8n') { ... }
     } 
-
     post {
-        always {
-            echo 'Hoàn thành pipeline onboarding khách hàng.'
-            cleanWs() 
-        }
-        success {
-            echo "THÀNH CÔNG: Pipeline cho ${params.CUSTOMER_NAME} đã hoàn tất. IP Public của VM: ${env.CUSTOMER_VM_PUBLIC_IP}"
-        }
+        always { echo 'Hoàn thành pipeline onboarding khách hàng.'; cleanWs() }
+        success { echo "THÀNH CÔNG: Pipeline cho ${params.CUSTOMER_NAME} đã hoàn tất. IP Public của VM: ${env.CUSTOMER_VM_PUBLIC_IP}" }
         failure {
             echo "THẤT BẠI: Pipeline cho ${params.CUSTOMER_NAME} đã gặp lỗi."
             script {
