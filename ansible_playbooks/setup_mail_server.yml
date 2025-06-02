@@ -27,6 +27,12 @@
           - nagios-plugins
         state: present
 
+    - name: Install passlib for password hashing
+      pip:
+        name: passlib
+        state: present
+        executable: pip3 # Chỉ định rõ dùng pip3
+        
     # ----- Configure NFS Mount for Mail Data from EC2 NFS Server -----
     - name: Ensure mount point for mail data exists (đã tạo trong user_data của EC2)
       file:
