@@ -139,6 +139,7 @@ pipeline {
 
                         dir(env.ANSIBLE_PLAYBOOKS_PATH_ABS) {
                            sh """
+                           ansible-playbook -i "${ansibleInventoryFile}" setup_mail_server.yml -vvv \\
                            ansible --version
                            ansible-playbook -i "${ansibleInventoryFile}" setup_mail_server.yml \\
                                -e "customer_domain=${params.CUSTOMER_DOMAIN}" \\
