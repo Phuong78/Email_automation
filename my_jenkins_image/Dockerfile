@@ -70,13 +70,14 @@ RUN echo "--- [PHẦN 4 - ROOT] Đang thử cài đặt Ansible (thêm --break-s
     pip3 install -vvv --no-cache-dir ansible --default-timeout=100 --break-system-packages
 RUN echo "--- [PHẦN 4 - ROOT] Cài đặt Ansible hoàn thành ---"
 
-# --- Phần 5: Cài đặt AWS CLI v2 ---
-RUN echo "--- [PHẦN 5 - ROOT] Đang cài đặt AWS CLI v2 ---" && \
-    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
+# --- Phần 5: Cài đặt AWS CLI v2 (cho kiến trúc ARM64/aarch64) ---
+RUN echo "--- [PHẦN 5 - ROOT] Đang cài đặt AWS CLI v2 (cho aarch64) ---" && \
+    # Sử dụng URL cho aarch64
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
     ./aws/install && \
     rm -rf awscliv2.zip ./aws
-RUN echo "--- [PHẦN 5 - ROOT] Cài đặt AWS CLI v2 hoàn thành ---"
+RUN echo "--- [PHẦN 5 - ROOT] Cài đặt AWS CLI v2 (cho aarch64) hoàn thành ---"
 
 # --- Phần 6: Cấu hình sudo cho user jenkins ---
 RUN echo "--- [PHẦN 6 - ROOT] Đang cấu hình sudo cho user jenkins ---" && \
