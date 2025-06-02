@@ -30,7 +30,7 @@ output "nfs_server_private_ip" {
 
 output "nfs_server_export_path" {
   description = "Đường dẫn export trên NFS Server."
-  value       = "/srv/nfs_share" # Hoặc giá trị bạn cấu hình trong user_data
+  value       = "/srv/nfs_share" # Khớp với user_data của NFS server
 }
 
 output "customer_mail_server_iam_role_arn" {

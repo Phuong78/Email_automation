@@ -12,3 +12,8 @@ output "customer_vm_id" {
   description = "ID của EC2 instance máy chủ mail khách hàng."
   value       = aws_instance.customer_vm.id
 }
+
+output "efs_dns_name_for_customer_vm" {
+  description = "DNS name của EFS được sử dụng bởi máy chủ mail này."
+  value       = data.aws_efs_file_system.mail_storage_for_customer.dns_name
+}

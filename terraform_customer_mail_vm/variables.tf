@@ -4,12 +4,12 @@ variable "aws_region" {
 }
 
 variable "customer_name" {
-  description = "Tên định danh của khách hàng (dùng cho tags, tên tài nguyên)."
+  description = "Tên định danh của khách hàng."
   type        = string
 }
 
 variable "customer_vm_ami_id" {
-  description = "AMI ID cho máy chủ mail của khách hàng (nên là Ubuntu Server gốc)."
+  description = "AMI ID cho máy chủ mail của khách hàng."
   type        = string
 }
 

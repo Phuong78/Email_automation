@@ -19,11 +19,11 @@ resource "aws_security_group" "nagios_sg" {
     cidr_blocks = [local.user_access_cidr]
   }
   ingress {
-    description      = "NRPE from Customer VMs"
-    from_port        = 5666
-    to_port          = 5666
-    protocol         = "tcp"
-    cidr_blocks      = concat(var.public_subnet_cidrs, var.private_subnet_cidrs) # Cho phép từ các subnet trong VPC
+    description = "NRPE from Customer VMs"
+    from_port   = 5666
+    to_port     = 5666
+    protocol    = "tcp"
+    cidr_blocks = concat(var.public_subnet_cidrs, var.private_subnet_cidrs) # Cho phép từ các subnet trong VPC
   }
 
   egress {

@@ -1,7 +1,9 @@
 provider "aws" {
   region = var.aws_region
 }
-
+data "aws_efs_file_system" "mail_storage_for_customer" {
+  file_system_id = var.efs_file_system_id
+}
 resource "aws_security_group" "customer_vm_sg" {
   name        = "${var.project_name_tag}-${var.customer_name}-MailVM-SG" # Đảm bảo tên duy nhất và tuân thủ quy tắc
   description = "Security group for customer mail VM ${var.customer_name}" # Chỉ dùng ký tự ASCII

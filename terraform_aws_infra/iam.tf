@@ -2,7 +2,7 @@
 resource "aws_iam_role" "nagios_server_role" {
   name = "${var.project_name}-Nagios-Role"
   assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
+    Version = "2012-10-17",
     Statement = [{
       Action    = "sts:AssumeRole",
       Effect    = "Allow",
@@ -26,7 +26,7 @@ resource "aws_iam_instance_profile" "nagios_profile" {
 resource "aws_iam_role" "nfs_server_role" {
   name = "${var.project_name}-NFS-Role"
   assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
+    Version = "2012-10-17",
     Statement = [{
       Action    = "sts:AssumeRole",
       Effect    = "Allow",
@@ -50,7 +50,7 @@ resource "aws_iam_instance_profile" "nfs_profile" {
 resource "aws_iam_role" "customer_mail_server_role" {
   name = "${var.project_name}-CustomerMail-Role"
   assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
+    Version = "2012-10-17",
     Statement = [{
       Action    = "sts:AssumeRole",
       Effect    = "Allow",
