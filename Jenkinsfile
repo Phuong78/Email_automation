@@ -22,7 +22,7 @@ pipeline {
         // === Cấu hình cho máy chủ mail của khách hàng (BẠN ĐÃ CUNG CẤP) ===
         CUSTOMER_VM_AMI_ID                   = 'ami-084568db4383264d4' 
         CUSTOMER_VM_INSTANCE_TYPE            = 't3.micro'
-        CUSTOMER_VM_KEY_PAIR_NAME            = 'nguyenp-key-pair'
+        CUSTOMER_VM_KEY_PAIR_NAME            = 'jenkins-ansible-key'
 
         SSH_CREDENTIALS_ID                   = 'customer-vm-ssh-key'
     }
