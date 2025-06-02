@@ -18,6 +18,7 @@
           - nagios-nrpe-server
           - nagios-plugins
           - python3-pip # Vẫn cần cho các module Ansible hoặc nếu bạn muốn dùng pip cho việc khác
+          - python3-passlib
         state: present
 
     # <<== TASK MỚI ĐỂ CÀI ĐẶT RIÊNG PYTHON3-PASSLIB ==>>
