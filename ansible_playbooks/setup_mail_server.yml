@@ -7,13 +7,13 @@
     # customer_domain: "example.com"
     # customer_email_user: "admin"
     # customer_email_password: "password"
-    # nfs_server_private_ip_aws: "10.10.101.10" (IP private của NFS server trên AWS)
+    # nfs_server_private_ip_aws: "10.10.101.68" (IP private của NFS server trên AWS)
     # nfs_export_path_aws: "/srv/nfs_share" (Đường dẫn export trên NFS server AWS)
-    # nagios_server_private_ip: "10.10.1.231"
+    # nagios_server_private_ip: "10.10.1.236"
     mail_data_mount_point: "/mnt/mail_data_on_nfs" # Thư mục mount dữ liệu mail
 
   tasks:
-    - name: Update apt cache and install necessary packages
+    - name: Update apt cache and install necessary packages (bao gồm python3-passlib)
       apt:
         update_cache: yes
         name:
@@ -25,23 +25,23 @@
           - nfs-common # Cần thiết để mount NFS
           - nagios-nrpe-server
           - nagios-plugins
-          - python3-pip
-          - python3-passlib 
+          - python3-pip       # Vẫn hữu ích cho các module Ansible hoặc nếu cần cài gói Python khác bằng pip
+          - python3-passlib   # << QUAN TRỌNG: Cài passlib qua apt
         state: present
 
     # ----- Configure NFS Mount for Mail Data from EC2 NFS Server -----
-    - name: Ensure mount point for mail data exists (đã tạo trong user_data của EC2)
+    - name: Ensure mount point for mail data exists (user_data của EC2 cũng đã tạo)
       file:
         path: "{{ mail_data_mount_point }}" # /mnt/mail_data_on_nfs
         state: directory
-        mode: '0777'
+        mode: '0777' # Sẽ được điều chỉnh bởi Postfix/Dovecot sau
 
     - name: Mount NFS share from AWS EC2 NFS Server (and add to /etc/fstab)
       ansible.posix.mount:
         path: "{{ mail_data_mount_point }}"
         src: "{{ nfs_server_private_ip_aws }}:{{ nfs_export_path_aws }}" # Sử dụng IP private của NFS Server EC2
         fstype: nfs
-        opts: "rw,sync,hard,intr,rsize=8192,wsize=8192,timeo=14,vers=4.1,bg" # Thử vers=4 hoặc bỏ nếu có vấn đề
+        opts: "rw,sync,hard,intr,rsize=8192,wsize=8192,timeo=14,vers=4.1,bg"
         state: mounted
 
     # ----- Configure Postfix (Cấu hình cơ bản - Cần mở rộng nhiều) -----
@@ -66,10 +66,10 @@
       loop:
         - { key: 'myhostname', value: "mail.{{ customer_domain }}" }
         - { key: 'mydomain', value: "{{ customer_domain }}" }
-        - { key: 'myorigin', value: "$mydomain" }
+        - { key: 'myorigin', value: "$mydomain" } # Postfix sẽ tự nội suy $mydomain
         - { key: 'mydestination', value: "$myhostname, {{ customer_domain }}, localhost.{{ customer_domain }}, localhost" }
         - { key: 'mynetworks', value: "127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128" }
-        - { key: 'home_mailbox', value: "Maildir/" } # Dữ liệu mail sẽ trong /home/USER/Maildir hoặc {{ mail_data_mount_point }}/USER/Maildir
+        - { key: 'home_mailbox', value: "Maildir/" }
       notify: Restart postfix
 
     # ----- Configure Dovecot (Cấu hình cơ bản - Cần mở rộng nhiều) -----
@@ -77,20 +77,20 @@
       lineinfile:
         path: /etc/dovecot/conf.d/10-mail.conf
         regexp: '^mail_location\\s*='
-        line: "mail_location = maildir:{{ mail_data_mount_point }}/%u/Maildir" # %u là username, mail sẽ lưu trên NFS
+        line: "mail_location = maildir:{{ mail_data_mount_point }}/%u/Maildir" # %u là username
       notify: Restart dovecot
 
     # ----- Create Email User -----
     - name: Create system user for email with home on NFS share
       user:
         name: "{{ customer_email_user }}"
-        password: "{{ customer_email_password | password_hash('sha512') }}"
+        password: "{{ customer_email_password | password_hash('sha512') }}" # passlib đã được cài qua apt
         shell: /usr/sbin/nologin
-        home: "{{ mail_data_mount_point }}/{{ customer_email_user }}" # Thư mục nhà của user trên NFS
+        home: "{{ mail_data_mount_point }}/{{ customer_email_user }}"
         state: present
         create_home: yes
         system: yes
-        group: mail # Đảm bảo group 'mail' có quyền ghi vào NFS
+        group: mail # Đảm bảo group 'mail' tồn tại và có quyền ghi vào NFS
 
     # ----- Configure Nagios NRPE Client -----
     - name: Configure NRPE allowed_hosts
@@ -105,12 +105,13 @@
         path: /etc/nagios/nrpe.cfg
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
-        backrefs: yes
+        backrefs: yes # Giữ lại phần không khớp của dòng để không xóa các comment khác
       loop:
         - { regexp: '^(#\s*)?command\[check_users\]=.*', line: 'command[check_users]=/usr/lib/nagios/plugins/check_users -w 5 -c 10' }
         - { regexp: '^(#\s*)?command\[check_load\]=.*', line: 'command[check_load]=/usr/lib/nagios/plugins/check_load -r -w .15,.10,.05 -c .30,.25,.20' }
         - { regexp: '^(#\s*)?command\[check_root_disk\]=.*', line: 'command[check_root_disk]=/usr/lib/nagios/plugins/check_disk -w 20% -c 10% -p /' }
         - { regexp: '^(#\s*)?command\[check_mail_data_disk\]=', line: 'command[check_mail_data_disk]=/usr/lib/nagios/plugins/check_disk -w 20% -c 10% -p {{ mail_data_mount_point }}' }
+        - { regexp: '^(#\s*)?command\[check_total_procs\]=.*', line: 'command[check_total_procs]=/usr/lib/nagios/plugins/check_procs -w 150 -c 200' }
       notify: Restart nrpe
 
   handlers:
